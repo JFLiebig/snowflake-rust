@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 
 pub const VERSION: &str = "1.3";
-pub const PROXY_UNKNOWN: &str = "unknown";
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ProxyPollRequest {
