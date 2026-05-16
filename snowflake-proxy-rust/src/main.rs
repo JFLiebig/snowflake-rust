@@ -5,6 +5,7 @@ mod tokens;
 mod event;
 mod relay;
 mod nat;
+mod server;
 
 use clap::Parser;
 use std::sync::Arc;
@@ -21,6 +22,8 @@ use crate::broker::SignalingServer;
 use crate::tokens::Tokens;
 use crate::event::SnowflakeEventDispatcher;
 use crate::nat::{NATType};
+use crate::server::pt;
+use crate::server::lib::snowflake::Transport;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -39,6 +42,12 @@ struct Args {
 
     #[arg(long)]
     keep_local_addresses: bool,
+
+    #[arg(long)]
+    server: bool,
+
+    #[arg(long)]
+    listen: Option<String>,
 }
 
 async fn run_session(
@@ -116,10 +125,46 @@ async fn run_session(
     Ok(())
 }
 
+async fn run_pt_server() -> Result<()> {
+    let pt_info = pt::server_setup().map_err(|e| anyhow::anyhow!(e))?;
+    let transport = Arc::new(Transport::new(pt_info.or_port));
+
+    let mut handles = Vec::new();
+    for bindaddr in pt_info.bindaddrs {
+        let transport = transport.clone();
+        let handle = tokio::spawn(async move {
+            if let Ok(listener) = transport.listen(bindaddr.addr).await {
+                pt::smethod(&bindaddr.method_name, bindaddr.addr);
+                loop {
+                    if let Ok((socket, _)) = listener.accept().await {
+                        let transport = transport.clone();
+                        tokio::spawn(async move {
+                            let _ = transport.handle_conn(socket).await;
+                        });
+                    }
+                }
+            }
+        });
+        handles.push(handle);
+    }
+    pt::smethods_done();
+
+    if handles.is_empty() {
+        return Err(anyhow::anyhow!("No listeners started"));
+    }
+
+    futures::future::join_all(handles).await;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
     let args = Args::parse();
+
+    if args.server || std::env::var("TOR_PT_MANAGED_TRANSPORT_VER").is_ok() {
+        return run_pt_server().await;
+    }
 
     let broker = Arc::new(SignalingServer::new(&args.broker, args.keep_local_addresses)?);
     let tokens = Arc::new(Tokens::new(args.capacity));
