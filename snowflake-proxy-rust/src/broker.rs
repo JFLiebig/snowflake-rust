@@ -3,10 +3,12 @@ use anyhow::{Result, anyhow};
 use reqwest::Client;
 use url::Url;
 
+pub const NAT_UNKNOWN: &str = "unknown";
+
 pub struct SignalingServer {
-    url: Url,
+    pub url: Url,
     client: Client,
-    _keep_local_addresses: bool,
+    pub keep_local_addresses: bool,
 }
 
 impl SignalingServer {
@@ -18,7 +20,7 @@ impl SignalingServer {
         Ok(Self {
             url,
             client,
-            _keep_local_addresses: keep_local_addresses,
+            keep_local_addresses,
         })
     }
 
